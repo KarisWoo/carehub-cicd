@@ -1,0 +1,2 @@
+[SECURITY] Analyse de scripts/bad-compose.yml
+ECHEC: tag :latest détecté

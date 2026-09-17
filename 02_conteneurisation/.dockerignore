@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+03_preuves_execution/
+06_observabilite/
+README.md

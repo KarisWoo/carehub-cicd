@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16.3-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - carehub_db_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: ${DB_MEM_LIMIT:-512m}
+    cpus: ${DB_CPU_LIMIT:-0.50}
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: 02_conteneurisation/Dockerfile
+    image: ${CAREHUB_IMAGE:-carehub-app:local}
+    environment:
+      APP_ENV: ${APP_ENV}
+      DB_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APP_MEM_LIMIT:-256m}
+    cpus: ${APP_CPU_LIMIT:-0.50}
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:1.27.0-alpine
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    mem_limit: ${PROXY_MEM_LIMIT:-128m}
+    cpus: ${PROXY_CPU_LIMIT:-0.25}
+    restart: unless-stopped
+
+volumes:
+  carehub_db_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true

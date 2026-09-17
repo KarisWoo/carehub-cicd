@@ -1,0 +1,127 @@
+name: CareHub CI-CD
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  security-events: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/carehub
+
+jobs:
+  quality:
+    name: Tests Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Unit tests and coverage threshold
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt pytest==8.2.2 pytest-cov==5.0.0
+          pytest --cov=app --cov-report=term-missing --cov-fail-under=40
+
+  security-build:
+    needs: quality
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Secret detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Custom blocking compliance check
+        run: bash scripts/security-check.sh 02_conteneurisation/docker-compose.yml
+
+      - name: Conftest policy check
+        run: |
+          docker run --rm -v "$PWD:/project" -w /project openpolicyagent/conftest:v0.56.0 \
+            test 02_conteneurisation/docker-compose.yml --policy policy
+
+      - name: Build image with immutable commit tag
+        run: docker build -f 02_conteneurisation/Dockerfile -t "$IMAGE_NAME:${{ github.sha }}" .
+
+      - name: Vulnerability scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+
+      - name: Login to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name == 'push'
+        run: docker push "$IMAGE_NAME:${{ github.sha }}"
+
+      - name: Generate SBOM
+        if: github.event_name == 'push'
+        uses: anchore/sbom-action@v0.17.2
+        with:
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Install Cosign
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@v3.6.0
+
+      - name: Sign image with Cosign keyless
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: cosign sign --yes "$IMAGE_NAME:${{ github.sha }}"
+
+      - name: Upload SBOM artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: security-build
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Deploy through SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd /opt/carehub
+            export CAREHUB_IMAGE=ghcr.io/${{ github.repository_owner }}/carehub:${{ github.sha }}
+            docker compose --env-file .env -f 02_conteneurisation/docker-compose.yml -f 02_conteneurisation/docker-compose.prod.yml pull app
+            docker compose --env-file .env -f 02_conteneurisation/docker-compose.yml -f 02_conteneurisation/docker-compose.prod.yml up -d --no-deps app
+            sleep 8
+            curl --fail --silent http://127.0.0.1:${APP_PORT:-80}/health

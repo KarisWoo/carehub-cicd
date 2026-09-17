@@ -1,0 +1,7 @@
+services:
+  app:
+    pull_policy: always
+  proxy:
+    restart: always
+  db:
+    restart: always

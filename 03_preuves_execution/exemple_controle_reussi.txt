@@ -1,0 +1,2 @@
+[SECURITY] Analyse de 02_conteneurisation/docker-compose.yml
+OK: contrôle de sécurité réussi

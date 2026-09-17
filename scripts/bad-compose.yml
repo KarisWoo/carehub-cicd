@@ -1,0 +1,5 @@
+services:
+  app:
+    image: nginx:latest
+    environment:
+      PASSWORD: SuperSecret123
