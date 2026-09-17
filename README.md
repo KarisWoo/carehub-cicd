@@ -213,6 +213,14 @@ Copier le projet sur le VPS, créer le fichier `.env` à partir de `.env.prod.ex
 docker compose --env-file .env -f 02_conteneurisation/docker-compose.yml -f 02_conteneurisation/docker-compose.prod.yml config
 ```
 
+## 14.1 Limitation rencontrée - déploiement VPS non réalisé
+
+Le déploiement en production sur un VPS n'a pas pu être réalisé pendant l'épreuve. Aucun VPS externe n'était disponible et la création d'un serveur VPS chez les fournisseurs consultés nécessitait la souscription à une offre payante. En conséquence, aucune adresse IP publique de serveur ni aucun accès SSH de déploiement n'étaient disponibles pour renseigner les secrets `VPS_HOST`, `VPS_USER` et `VPS_SSH_KEY`.
+
+Le pipeline de déploiement via SSH est néanmoins configuré et prêt à être utilisé dès qu'un VPS est disponible. Les tests Python et les contrôles de sécurité ont pu être exécutés ; le job de déploiement s'arrête au moment de la connexion SSH avec l'erreur `missing server host`, faute de valeur `VPS_HOST`. Aucune valeur fictive ni aucun secret inventé n'a été ajouté au dépôt afin de conserver un rendu cohérent et sécurisé.
+
+Cette limitation est donc explicitement assumée et documentée. La procédure de préparation du VPS, les secrets attendus et la stratégie de rollback restent décrits dans le projet afin de montrer comment le déploiement serait finalisé dans un environnement disposant d'un serveur cible.
+
 ## 15. Rollback
 
 Les images sont taguées avec le SHA du commit. Pour revenir à une version précédente :
