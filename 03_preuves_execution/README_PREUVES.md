@@ -1,65 +1,67 @@
-# 03 - Dossier de preuves d'exécution
+# 03_preuves_execution — Dossier de preuves complet
 
-Ce dossier doit contenir VOS captures et journaux réels. Les fichiers de preuve ne doivent pas être inventés.
+Ce dossier regroupe les preuves réelles obtenues pendant l'épreuve CareHub. Les captures sont ciblées et anonymisées : aucun nom, adresse e-mail, identifiant de compte personnel ou URL de dépôt personnel n'est nécessaire à leur compréhension.
 
-## Captures obligatoires à produire
+## 1. Sécurité CI/CD — échec bloquant puis remédiation
 
-1. `01_pipeline_echec_securite.png`
-   - Exécution GitHub Actions en échec à cause du contrôle de sécurité.
+### `01_controle_securite_echec_trivy.png`
+**Ce que la capture prouve :** le contrôle de sécurité Trivy détecte des vulnérabilités de sévérité élevée et termine le job avec un code de sortie `1`. Le contrôle est donc réellement bloquant.
 
-2. `02_pipeline_reussi.png`
-   - Même pipeline après remédiation, tous les jobs importants au vert.
+### `02_details_cve_openssl_avant_remediation.png`
+**Ce que la capture prouve :** détail des vulnérabilités détectées avant remédiation, avec sévérité, version installée et version corrigée proposée.
 
-3. `03_build_scan_sbom.png`
-   - Build Docker + scan Trivy + génération SBOM.
+### `03_pipeline_securite_reussie_apres_remediation.png`
+**Ce que la capture prouve :** après remédiation, les tests Python 3.11 et 3.12 et la construction/sécurité passent. Le pipeline atteint ensuite le déploiement production.
 
-4. `04_image_signee.png`
-   - Sortie Cosign ou preuve de signature de l'image.
+## 2. Conteneurisation et continuité de service
 
-5. `05_deploiement_vps.png`
-   - Déploiement automatique réussi sur le VPS.
+### `04_scaling_3_instances_healthy.png`
+**Ce que la capture prouve :** exécution de Docker Compose avec `--scale app=3`. Les trois instances `app-1`, `app-2`, `app-3` sont `healthy`; la base et le proxy sont également opérationnels.
 
-6. `06_application_en_ligne.png`
-   - Navigateur ou `curl` montrant l'application CareHub accessible.
+### `05_application_disponible_apres_scaling.png`
+**Ce que la capture prouve :** l'application reste disponible après la montée en charge. La réponse HTTP locale renvoie `status: ok`.
 
-7. `07_scaling.png`
-   - `docker compose ps` montrant plusieurs instances de `app`.
+## 3. Limite du déploiement VPS
 
-8. `08_continuite_service.png`
-   - Boucle de requêtes HTTP pendant une mise à jour/scaling.
+### `06_limitation_deploiement_vps_missing_host.png`
+**Ce que la capture prouve :** le workflow arrive à l'étape SSH puis échoue sur `missing server host`. Aucun VPS externe n'était disponible pendant l'épreuve. La création d'un VPS chez les fournisseurs consultés nécessitait une offre payante. Cette limite est explicitement déclarée dans le README principal plutôt que masquée.
 
-9. `09_prometheus_targets.png`
-   - Cibles Prometheus actives.
+## 4. Observabilité — Prometheus, cAdvisor et Grafana
 
-10. `10_grafana_cpu_ram.png`
-   - CPU et mémoire visibles sur un tableau de bord.
+### `07_observabilite_stack_prometheus_grafana_cadvisor.png`
+**Ce que la capture prouve :** démarrage de la pile d'observabilité Docker avec Prometheus, Grafana et cAdvisor, ainsi que leurs ports d'exposition.
 
-11. `11_dora.png`
-   - Tableau DORA complété à partir des exécutions réelles.
+### `08_prometheus_target_cadvisor_up.png`
+**Ce que la capture prouve :** Prometheus collecte réellement la cible `cadvisor:8080/metrics`; la cible est `UP`.
 
-## Commandes utiles pour produire les preuves
+### `09_cadvisor_cpu_memoire.png`
+**Ce que la capture prouve :** cAdvisor remonte les métriques d'exploitation CPU et mémoire des conteneurs.
 
-```bash
-# Contrôle bloquant volontaire
-bash scripts/security-check.sh scripts/bad-compose.yml
+### `10_cadvisor_reseau.png`
+**Ce que la capture prouve :** cAdvisor remonte les métriques réseau (octets TX/RX) et le suivi des erreurs réseau.
 
-# Contrôle réussi
-bash scripts/security-check.sh 02_conteneurisation/docker-compose.yml
+### `11_grafana_cpu_conteneurs.png`
+**Ce que la capture prouve :** Grafana interroge Prometheus avec la requête CPU `sum(rate(container_cpu_usage_seconds_total[1m]))` et affiche une série temporelle réelle.
 
-# Démarrage
-cd 02_conteneurisation
-docker compose --env-file .env up -d --build
+### `12_grafana_reseau_entrant.png`
+**Ce que la capture prouve :** Grafana interroge Prometheus avec la requête réseau `sum(rate(container_network_receive_bytes_total[1m]))` et affiche les variations du trafic entrant.
 
-# Etat / santé
-docker compose ps
-curl -i http://localhost:8080/health
+### `13_grafana_dashboards.png`
+**Ce que la capture prouve :** trois tableaux de bord de supervision ont été créés pour la mémoire, le trafic réseau et le CPU des conteneurs.
 
-# Scaling
-docker compose --env-file .env up -d --scale app=3
-docker compose ps
+## Correspondance avec les exigences de l'épreuve
 
-# Continuité : lancer pendant le scaling/déploiement
-while true; do date; curl -fsS http://localhost:8080/; echo; sleep 1; done
-```
+| Exigence | Preuve(s) |
+|---|---|
+| Contrôle de sécurité bloquant | 01, 02 |
+| Réussite après remédiation | 03 |
+| Tests et construction CI/CD | 03 |
+| Mise à l'échelle du service | 04 |
+| Maintien de disponibilité | 05 |
+| Déploiement VPS | Limitation documentée : 06 |
+| Supervision / observabilité | 07 à 13 |
+| CPU / mémoire / réseau | 09 à 12 |
 
-N'oubliez pas d'anonymiser toutes les captures : aucun nom, prénom, e-mail, compte personnel ou URL personnelle visible.
+## Limites assumées
+
+Le déploiement réel sur VPS et l'application accessible sur une adresse publique n'ont pas été réalisés. Il n'est donc pas possible de fournir une capture authentique de production ni de calculer honnêtement des indicateurs DORA dépendant d'un déploiement de production réussi (par exemple le lead time jusqu'à la production). Aucune valeur n'est inventée.
