@@ -62,7 +62,7 @@ jobs:
         run: docker build -f 02_conteneurisation/Dockerfile -t "$IMAGE_NAME:${{ github.sha }}" .
 
       - name: Vulnerability scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: table
